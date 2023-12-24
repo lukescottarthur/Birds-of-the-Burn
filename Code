@@ -4,3 +4,516 @@ library(ggpubr)
 library(dplyr)
 library(tidyverse)
 library(rstatix)
+
+##vegetation
+(theme_classic() +theme(legend.position = "top"))
+
+SEM <- function(x) sd(x) / sqrt(length(x))
+
+#code for calculating mean by group of a data frame. the 2:7 is the columns that are to be calculated. 
+meanfs <- aggregate(VegetationActual[, 6:14], list(VegetationActual$plots), mean)
+meanfs
+
+#code for calculating SEM by group, see above. CAN USE THIS FOR ANY FUNCTION
+SEMfs <- aggregate(VegetationActual[,6:14], list(VegetationActual$plots), SEM)
+SEMfs
+
+
+meantreedensity <- meanfs[, c("Snags/Ha", "LiveTrees/Ha")]
+meantreedensity
+SEMtreedensity <- SEMfs[, c("Snags/Ha", "LiveTrees/Ha")]
+SEMtreedensity
+
+#start here
+enviro$`Burn Severity` <- as.factor(enviro$`Burn Severity`)
+enviro %>% 
+  group_by(`Burn Severity`) %>%
+  get_summary_stats('Snags_Ha', type = "common") -> snagstats
+snagstats
+kwsnags <- enviro %>% kruskal_test(Snags_Ha ~ `Burn Severity`)
+kwsnags
+
+snagspw <- TreeSnag %>% dunn_test(Snags_Ha ~ Burn_Severity, p.adjust.method = "bonferroni") 
+snagspw
+
+treespw <- TreeSnag %>% dunn_test(LiveTrees_Ha ~ Burn_Severity, p.adjust.method = "bonferroni") 
+treespw
+
+TreeDensityStacked <- ggbarplot(dense, x = "BurnSeverity", y = "Trees", fill = "Condition", add = "mean") +
+  scale_fill_manual(name = "Tree Condition", labels = c("Live", "Snags"),values = c("palegreen", "tomato2")) +
+  labs(x='Burn Severity', y = 'Tree Density/ha')+
+  theme(axis.title = element_text(size = 10)) +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+TreeDensityStacked
+
+ggsave("TreeDensityStackedupdate.tiff", width = 4.5, height  = 3.5)
+
+#species stacked bar chart
+
+palette()
+speciesstacked
+
+TreeSpeciesStacked <- ggbarplot(speciesstacked, x = "BurnSeverity", y = "Density", fill = "Species", add = "mean") +
+  scale_fill_manual(name = "Species", labels = c("ABCO", "JUOS", "PIPO", "POTR", "PSME", "QUGA"), values = c("forestgreen", "deeppink", "blue", "darkorchid", "cyan3", "chartreuse2")) +
+  labs(x='Burn Severity', y = 'Tree Density/ha')+
+  theme(axis.title = element_text(size = 10), legend.position = "right") +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+TreeSpeciesStacked
+
+ggsave("TreeSpeciesStackedupdate3.tiff", width = 6, height  = 4.5)
+
+
+##univariate
+theme_set(theme_bw() +theme(legend.position = "top"))
+
+str(speciescombined)
+
+observations <-speciescombined [-1]
+observations
+
+speccurv <-specaccum(comm=observations, method = "random", permutations = 1000)
+plot(speccurv)
+
+sr <-specnumber(observations)
+sr
+mean(sr)
+sd(sr)
+shannon <- diversity(observations, index = "shannon")     
+shannon
+mean(shannon)
+
+apply(speciescombined[,-1]>0,1,sum)
+rare<- rarefy(speciescombined[-1], sample=10, MARGIN=1)
+rare
+
+diversity(speciescombined[-1], index="shannon")
+
+##multivariate
+head(speciescombined)
+unique(speciescombined$`Burn Severity`)
+colnames(speciescombined)
+head(VeganEnvironmentCSV)
+
+bird.matrix1<- as.matrix(speciescombined[,2:54]) 
+
+VegetationActual$plots<-as.factor(VegetationActual$plots)
+
+bird.mat1<- sqrt(bird.matrix1)
+bird.dist1<-vegdist(bird.mat1, method='bray')
+bird.dist1
+
+set.seed(11) #reproducible results
+bird.div1<-adonis2(bird.dist1~as.factor(speciescombined$'Burn Severity'), data=speciescombined, permutations=9999)
+bird.div1
+
+birdMDS1<-metaMDS(bird.mat, distance="bray", k=3, try = 50, trymax=999, autotransform=TRUE) ##k is the number of dimensions
+stressplot(birdMDS1)
+
+(birdMDS1)
+
+NMDS11<-birdMDS1$points[,1]
+NMDS22<-birdMDS1$points[,2]
+bird.plot1<- cbind(speciescombined,NMDS11, NMDS22,VegetationActual)
+
+head(bird.plot1)
+
+bird.plot1 <- bird.plot1[,!duplicated(colnames(bird.plot1))]
+
+plot3 <-ggplot(data=bird.plot1, aes(NMDS11, NMDS22))+
+  geom_point(data=bird.plot1, aes(NMDS11, NMDS22, color=plots),position=position_jitter(.01))+##separates overlapping points
+  stat_ellipse(aes(fill=plots), alpha=.2,type='t',linewidth =1, geom="polygon", segments = 10000)+ 
+  theme_minimal()+ 
+  theme(axis.title = element_blank(),  legend.title = element_text(size=15),
+        legend.text = element_text(size=13))+
+  scale_fill_manual(values = c("green2", "yellow2", "orange2", "red"), guide = "none" )+
+  scale_color_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("green2", "yellow2", "orange2", "red"))
+plot3
+ggsave("nmds1122.tiff", width = 9, height = 7)
+
+##functional guilds
+
+#k-w tests
+migu %>% kruskal_test(percent ~ migration)
+miguu <-migu %>% dunn_test(percent ~ migration, p.adjust.method = "bonferroni")
+print(miguu, n =22)
+
+migl %>% kruskal_test(percent ~ migration)
+migll<- migl %>% dunn_test(percent ~ migration, p.adjust.method = "bonferroni")
+print(migll, n =22)
+
+migm %>% kruskal_test(percent ~ migration)
+migmm <-migm %>% dunn_test(percent ~ migration, p.adjust.method = "bonferroni")
+print(migmm, n =22)
+
+migh%>% kruskal_test(percent ~ migration)
+mighh <-migh %>% dunn_test(percent ~ migration, p.adjust.method = "bonferroni")
+print(mighh, n =22)
+
+nestu2 %>% kruskal_test(percent ~ nest)
+nestuu2 <- nestu2%>% dunn_test(percent ~ nest, p.adjust.method = "bonferroni") 
+nestuu2
+print(nestuu2, n =22)
+
+nestl2 %>% kruskal_test(percent ~ nest)
+nestll2 <- nestl2 %>% dunn_test(percent ~ nest, p.adjust.method = "bonferroni")
+print(nestll2, n = 21)
+
+nestm2 %>% kruskal_test(percent ~ nest)
+nestmm2 <- nestm2 %>% dunn_test(percent ~ nest, p.adjust.method = "bonferroni")
+print(nestmm2, n = 21)
+
+nesth2 %>% kruskal_test(percent ~ nest)
+nesthh2 <- nesth2 %>% dunn_test(percent ~ nest, p.adjust.method = "bonferroni")
+print(nesthh2, n = 21)
+
+subu %>% kruskal_test(Percent ~ Substrate)
+subuu <-subu %>% dunn_test(Percent ~ Substrate, p.adjust.method = "bonferroni")
+print(subuu, n = 21)
+
+subl %>% kruskal_test(Percent ~ Substrate)
+subll <-subl %>% dunn_test(Percent ~ Substrate, p.adjust.method = "bonferroni")
+print(subll, n = 21)
+
+subm %>% kruskal_test(Percent ~ Substrate)
+submm <-subm %>% dunn_test(Percent ~ Substrate, p.adjust.method = "bonferroni")
+print(submm, n = 21)
+
+subh %>% kruskal_test(Percent ~ Substrate)
+subhh <-subh %>% dunn_test(Percent ~ Substrate, p.adjust.method = "bonferroni")
+print(subhh, n = 21)
+
+stratu %>% kruskal_test(percent ~ technique)
+stratuu <-stratu %>% dunn_test(percent ~ technique, p.adjust.method = "bonferroni")
+print(stratuu, n = 21)
+
+stratl %>% kruskal_test(percent ~ technique)
+stratll <-stratl %>% dunn_test(percent ~ technique, p.adjust.method = "bonferroni")
+print(stratll, n = 21)
+
+stratm %>% kruskal_test(percent ~ technique)
+stratmm <-stratm %>% dunn_test(percent ~ technique, p.adjust.method = "bonferroni")
+print(stratmm, n = 21)
+
+strath %>% kruskal_test(percent ~ technique)
+strathh <-strath %>% dunn_test(percent ~ technique, p.adjust.method = "bonferroni")
+
+print(strathh, n = 21)
+
+pd <- position_dodge2(0.1)
+
+#Foraging Substrate Percent Composition
+SubstratePercent <- ggline(subpercent, x = "plots", y = "Percent", group= "Substrate", add = "mean_se", color = "Substrate", size = 0.75, point.size = 1.5)+
+  scale_color_manual(name = "Feeding Substrate", labels = c("Air", "Bark", "Ground-Vegetation", "Generalist", "Shrub-Lower Canopy", "Upper Canopy"), values = c("forestgreen", "deeppink", "blue", "darkorchid", "cyan3", "chartreuse2"))+
+      labs(x='Burn Severity', y=NULL)+
+        theme(axis.text = element_text(size = 11), axis.title = element_text(size = 11),
+              legend.position = "right", legend.title = element_text(size=11),
+              legend.text = element_text(size=11))+
+        scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+SubstratePercent
+ggsave("SubstratePercent.tiff", width = 4.5, height  = 3.5)
+
+
+#Foraging technique/strategy
+StrategyPercent <- ggline(techpercent, x = "plots", y = "percent", group= "technique", add = "mean_se", color = "technique", size = 0.75, point.size = 1.5)+
+  scale_color_manual(name = "Feeding Strategy", labels = c("Excavator", "Forager", "Gleaner", "Hawker", "Sallier", "Scavenger", "Screener"), values = c("forestgreen", "deeppink", "blue", "darkorchid", "cyan3", "chartreuse2", "brown"))+
+  labs(x='Burn Severity', y=NULL)+
+  theme(axis.text = element_text(size = 11), axis.title = element_text(size = 11), 
+        legend.position = "right", legend.title = element_text(size=11),
+        legend.text = element_text(size=11))+
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+StrategyPercent
+
+
+#Migration
+MigrationPercentagain <- ggline(migrationpercent2, x = "plot", y = "percent", group= "migration", add = "mean_se", color = "migration", size = 0.75, point.size = 1.5)+
+  scale_color_manual(name = "Migratory Pattern", labels = c("Irruptive", "Long distance", "Medium distance", "Resident", "Short distance", "Variable Distance"), values = c("forestgreen", "deeppink", "blue", "darkorchid", "cyan3", "chartreuse2"))+
+  labs(x='Burn Severity', y=NULL)+
+  theme(axis.text = element_text(size = 11), axis.title = element_text(size = 11), 
+        legend.position = "right", legend.title = element_text(size=11),
+        legend.text = element_text(size=11))+
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+MigrationPercentagain
+
+#Nesting Location
+NestingPercentagain <- ggline(nestpercent2, x = "plots", y = "percent", group= "nest", add = "mean_se", color = "nest", size = 0.75, point.size = 1.5)+
+  scale_color_manual(name = "Nest Location", labels = c("Canopy", "Cavity", "Cliff", "Generalist", "Ground", "Secondary Cavity", "Shrub"), values = c("forestgreen", "deeppink", "blue", "darkorchid", "cyan3", "chartreuse2", "brown"))+
+  labs(x='Burn Severity', y=NULL)+
+  theme(axis.text = element_text(size = 11), axis.title = element_text(size = 11), 
+        legend.position = "right", legend.title = element_text(size=11),
+        legend.text = element_text(size=11))+
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+NestingPercentagain
+
+
+FunctionalGuildPercent <- ggarrange (SubstratePercent, StrategyPercent, MigrationPercentagain, NestingPercentagain, ncol=2, 
+           labels  = NULL, 
+           font.label = list(siz = 12, face = "plain"),
+           common.legend = FALSE, legend = "right", widths = 2, heights = 1.5,
+           nrow = 2)
+
+FGPANN<-annotate_figure(FunctionalGuildPercent, left = text_grob("Percent Composition", color = "black", rot = 90, size = 15))
+
+FGPANN
+
+ggsave("FunctionalGuildPercent3.tiff", width = 13, height = 7.5)
+
+#functional guild plots
+(theme_classic() +theme(legend.position = "top"))
+
+meanairbark <- meanfs[, c("air", "bark")]
+meanairbark
+SEMairbark <- SEMfs[, c("air", "bark")]
+SEMairbark
+
+SUBSTRATE$plots <- as.factor(SUBSTRATE$plots)
+
+#code for creating summary table with desired measures (mean and sem (sem already defined))
+airsummary <- SUBSTRATE %>%
+  group_by(plots) %>%
+  summarise(
+    SEM = SEM(air),
+    air = mean(air))
+
+#code for making plot using above summary information
+airsummary
+airsummaryplot <- ggplot(airsummary, aes(x = plots, y = air, ymin = air-SEM, ymax = air+SEM))+
+  geom_errorbar(width = 0.1) +
+  geom_point(size = 1.5) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Air', y='Mean Abundance')+
+  theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c(NULL)) 
+  
+airsummaryplot
+
+#kruskal-wallis pairwise tests and box plot with adjusted significance!
+SUBSTRATE %>% 
+  group_by(plots) %>%
+  get_summary_stats(air, type = "common") -> summarystats2
+summarystats2
+kwair <- SUBSTRATE %>% kruskal_test(air ~ plots)
+kwair
+
+airpairwise <- SUBSTRATE %>% 
+  dunn_test(air ~ plots, p.adjust.method = "bonferroni") 
+airpairwise
+
+#basic box plot
+airpairwise <- airpairwise %>% add_xy_position(x = "plots")
+ggboxplot(SUBSTRATE, x = "plots", y = "air") +
+  stat_pvalue_manual(airpairwise, hide.ns = TRUE)
+
+#jitter plot with colors
+airjitter<-ggboxplot(SUBSTRATE, x = "plots", y = "air", color = "plots", add = "jitter") +
+  scale_color_manual(name = "plots", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen3", "lightgoldenrod3", "lightsalmon2", "tomato3")) +
+  stat_pvalue_manual(airpairwise, hide.ns = TRUE, y.position = 20) +
+  xlab('Burn Severity') +ylab('Abundance') + theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate","High"))
+  
+airjitternolegend<- airjitter + theme(legend.position = "none")
+airjitternolegend
+
+#bark plot
+SUBSTRATE %>% 
+  group_by(plots) %>%
+  get_summary_stats(bark, type = "common") -> summarystats3
+summarystats3
+kwbark <- SUBSTRATE %>% kruskal_test(bark ~ plots)
+kwbark
+
+barkpairwise <- SUBSTRATE %>% 
+  dunn_test(bark ~ plots, p.adjust.method = "bonferroni") 
+barkpairwise
+
+barkjitter<-ggboxplot(SUBSTRATE, x = "plots", y = "bark", color = "plots", add = "jitter") +
+  scale_color_manual(name = "plots", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen3", "lightgoldenrod3", "lightsalmon2", "tomato3")) +
+  stat_pvalue_manual(barkpairwise, hide.ns = TRUE, y.position = 6) +
+  xlab('Burn Severity') +ylab('Abundance') + theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate","High"))
+
+barkjitternolegend<- barkjitter + theme(legend.position = "none")
+barkjitternolegend
+
+#migration
+#short
+
+migration %>% 
+  group_by(plot) %>%
+  get_summary_stats(short, type = "common") -> summarystats4
+summarystats4
+kwmigration <- migration %>% kruskal_test(short ~ plot)
+kwmigration
+
+shortpairwise <- migration %>% 
+  dunn_test(short ~ plot, p.adjust.method = "bonferroni") 
+shortpairwise
+
+shortjitter<-ggboxplot(migration, x = "plot", y = "short", color = "plot", add = "jitter") +
+  scale_color_manual(name = "plots", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen3", "lightgoldenrod3", "lightsalmon2", "tomato3")) +
+  stat_pvalue_manual(shortpairwise, hide.ns = TRUE, y.position = 20) +
+  xlab('Burn Severity') +ylab('Abundance') + theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate","High"))
+
+shortjitternolegend<- shortjitter + theme(legend.position = "none")
+shortjitternolegend
+  
+#mediumdistance migration
+
+migration %>% 
+  group_by(plot) %>%
+  get_summary_stats(medium, type = "common") -> summarystats5
+summarystats5
+kwmigration2 <- migration %>% kruskal_test(medium ~ plot)
+kwmigration2
+
+mediumpairwise <- migration %>% 
+  dunn_test(medium ~ plot, p.adjust.method = "bonferroni") 
+mediumpairwise
+
+
+mediumjitter<-ggboxplot(migration, x = "plot", y = "medium", color = "plot", add = "jitter") +
+  scale_color_manual(name = "plots", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen3", "lightgoldenrod3", "lightsalmon2", "tomato3")) +
+  stat_pvalue_manual(mediumpairwise, step.increase=.1, hide.ns = TRUE, y.position = 10) +
+  xlab('Burn Severity') +ylab('Abundance') + theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate","High"))
+
+mediumjitternolegend<- mediumjitter + theme(legend.position = "none")
+mediumjitternolegend
+  
+#sallier foraging technique
+
+technique %>% 
+  group_by(plots) %>%
+  get_summary_stats(sallier, type = "common") -> summarystats6
+summarystats6
+kwsallier <- technique %>% kruskal_test(sallier ~ plots)
+kwsallier
+
+sallierpairwise <- technique %>% 
+  dunn_test(sallier ~ plots, p.adjust.method = "bonferroni") 
+sallierpairwise
+
+sallierjitter<-ggboxplot(technique, x = "plots", y = "sallier", color = "plots", add = "jitter") +
+  scale_color_manual(name = "plots", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen3", "lightgoldenrod3", "lightsalmon2", "tomato3")) +
+  stat_pvalue_manual(sallierpairwise, hide.ns = TRUE, y.position = 15) +
+  xlab('Burn Severity') +ylab('Abundance') + theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate","High"))
+
+sallierjitternolegend<- sallierjitter + theme(legend.position = "none")
+sallierjitternolegend
+  
+#barplots for functional guilds
+
+AIRBARPLOT <- ggbarplot(SUBSTRATE, x = "plots", y = "air",fill = "plots", add = "mean_se")+ 
+  geom_jitter(position = position_jitter(0.25), shape = 16)+
+  stat_pvalue_manual(airpairwise, hide.ns = TRUE, y.position = 25) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Air', y='Mean Abundance')+
+  theme(axis.title = element_text(size = 8)) +
+  scale_x_discrete(labels=c(NULL)) +
+  theme(legend.position = "none")
+
+AIRBARPLOT
+
+AIRBARPLOT1 <- ggbarplot(SUBSTRATE, x = "plots", y = "air",fill = "plots", add = "mean_se")+ 
+  geom_jitter(width = 0.25, height = 0, shape = 16)+
+  stat_pvalue_manual(airpairwise, hide.ns = TRUE, y.position = 25) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Air', y='Mean Abundance')+
+  theme(axis.title = element_text(size = 11)) +
+  scale_x_discrete(labels=c(NULL)) +
+  theme(legend.position = "none")
+
+AIRBARPLOT1
+
+BARKBARPLOT <- ggbarplot(SUBSTRATE, x = "plots", y = "bark",fill = "plots", add = "mean_se")+ 
+  geom_jitter(width = 0.25, height = 0, shape = 16)+
+  stat_pvalue_manual(barkpairwise, hide.ns = TRUE, y.position = 6) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Bark', y = 'Mean Abundance')+
+  ylab(NULL)+
+  theme(axis.title = element_text(size = 11)) +
+  theme(legend.position ="none")+
+  scale_x_discrete(labels=c(NULL))
+  
+
+print(BARKBARPLOT)
+
+
+SUBSTRATECOMBINED <- ggarrange (AIRBARPLOT1, BARKBARPLOT, ncol=2, 
+                                 labels  = "AUTO", hjust = c(-.5, .8), 
+                                 font.label = list(siz = 12, face = "plain"),
+                                 common.legend = TRUE, legend = "bottom",
+                                 nrow = 1)
+SUBSTRATECOMBINED
+ggsave("SUBSTRATECOMBINED1018take2.tiff", width = 6, height  = 3.5)
+
+#migration barcharts
+
+SHORTMIGRATIONPLOT <- ggbarplot(migration, x = "plot", y = "short",fill = "plot", add = "mean_se")+ 
+  geom_jitter(width = 0.25, height = 0, shape = 16)+
+  stat_pvalue_manual(shortpairwise, hide.ns = TRUE, y.position = 23) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Short', y = 'Mean Abundance')+
+  theme(axis.title = element_text(size = 11)) +
+  theme(legend.position ="none")+
+  scale_x_discrete(labels=c(NULL))
+
+
+SHORTMIGRATIONPLOT
+
+MEDIUMMIGRATIONPLOT <- ggbarplot(migration, x = "plot", y = "medium",fill = "plot", add = "mean_se")+ 
+  geom_jitter(width = 0.25, height = 0, shape = 16)+
+  stat_pvalue_manual(mediumpairwise,step.increase=.1, hide.ns = TRUE, y.position = 8) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Medium', y = 'Mean Abundance')+
+  ylab(NULL)+
+  theme(axis.title = element_text(size = 11)) +
+  theme(legend.position ="none")+
+  scale_x_discrete(labels=c(NULL))+
+  scale_y_continuous(labels = scales::number_format(accuracy = 1))
+
+MEDIUMMIGRATIONPLOT
+
+MIGRATIONCOMBINED <- ggarrange (SHORTMIGRATIONPLOT, MEDIUMMIGRATIONPLOT, ncol=2, 
+                                labels  = "AUTO", hjust = c(-.5, .8), 
+                                font.label = list(siz = 12, face = "plain"),
+                                common.legend = TRUE, legend = "bottom",
+                                nrow = 1)
+MIGRATIONCOMBINED
+ggsave("MIGRATIONCOMBINED1018take2.tiff", width = 6, height  = 3.5)
+
+
+#SALLIER
+SALLIERPLOT <- ggbarplot(technique, x = "plots", y = "sallier",fill = "plots", add = "mean_se")+ 
+  geom_jitter(width = 0.25, height = 0, shape = 16)+
+  stat_pvalue_manual(sallierpairwise, hide.ns = TRUE, y.position = 16) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Burn Severity', y = 'Mean Sallier Abundance')+
+  theme(axis.title = element_text(size = 11)) +
+  theme(legend.position ="none")+
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+SALLIERPLOT
+
+ggsave("SALLIER1018take2.tiff", width = 4.5, height  = 3.5)
+
+
+#kw revised nest location oh dear shrub is now significant
+nestlocationupdate %>% kruskal_test(canopy ~ plots)
+nestlocationupdate %>% kruskal_test(shrub ~ plots)
+
+shrubnestpairwise <- nestlocationupdate%>% dunn_test(shrub ~ plots, p.adjust.method = "bonferroni") 
+shrubnestpairwise
+  
+SHRUBNESTPLOT <- ggbarplot(nestlocationupdate, x = "plots", y = "shrub",fill = "plots", add = "mean_se")+ 
+  geom_jitter(width = 0.25, height = 0, shape = 16)+
+  stat_pvalue_manual(shrubnestpairwise, hide.ns = TRUE, y.position = 13) +
+  scale_fill_manual(name = "Burn Severity", labels = c("Unburned", "Low", "Moderate", "High"),values = c("palegreen", "lightgoldenrod1", "lightsalmon", "tomato2")) +
+  labs(x='Burn Severity', y = 'Mean Shrub Nester Abundance')+
+  theme(axis.title = element_text(size = 11)) +
+  theme(legend.position ="none")+
+  scale_x_discrete(labels=c("Unburned", "Low", "Moderate", "High"))
+SHRUBNESTPLOT
+
+ggsave("shrubnest1114take2.tiff", width = 4.5, height  = 3.5)
+
